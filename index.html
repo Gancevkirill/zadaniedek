@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Game</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f0f0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    #game-screen {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      background-color: #fff;
+      border: 1px solid #000;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .player, .monster, .trap {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background-color: #000;
+    }
+    .player {
+      background-color: blue;
+    }
+    .monster {
+      background-color: red;
+    }
+    .trap {
+      background-color: green;
+    }
+    #game-info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 18px;
+      color: #000;
+    }
+    #time {
+      position: absolute;
+      top: 30px;
+      left: 10px;
+      font-size: 18px;
+      color: #000;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    input[type="text"] {
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    h1 {
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+<div id="app" class="container">
+  <!-- Контент будет здесь -->
+</div>
+
+<script>
+let state = {
+  route: 'login',
+  username: '',
+  startTime: null,
+  elapsedTime: 0,
+  lives: 5,
+  monstersEncountered: 0,
+  trapsEncountered: 0,
+  gameInterval: null,
+  monsterInterval: null,
+  trapInterval: null,
+  playerPosition: { x: 0, y: 0 },
+  monsters: [],
+  traps: [],
+  gamePaused: false
+};
+
+function updateState(newState) {
+  state = { ...state, ...newState };
+  render();
+}
+
+function render() {
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+
+  switch (state.route) {
+    case 'login':
+      renderLogin();
+      break;
+    case 'game':
+      renderGame();
+      break;
+    case 'results':
+      renderResults();
+      break;
+  }
+}
+
+const finishPosition = { x: 780, y: 380 };
+
+function renderLogin() {
+  const login = document.createElement('div');
+  login.innerHTML = `
+    <h1>Welcome to the Game</h1>
+    <form id="login-form" onsubmit="startGame(event)">
+      <input type="text" id="username" placeholder="Enter your name" required>
+      <button type="submit">Start Game</button>
+    </form>
+  `;
+  app.appendChild(login);
+}
+
+function startGame(event) {
+  event.preventDefault();
+  clearIntervals();
+  const username = document.getElementById('username').value;
+  updateState({
+    route: 'game',
+    username,
+    startTime: new Date(),
+    elapsedTime: 0,
+    lives: 5,
+    monstersEncountered: 0,
+    trapsEncountered: 0,
+    monsters: [],
+    traps: [],
+    playerPosition: { x: 0, y: 0 },
+    gameInterval: setInterval(updateElapsedTime, 1000),
+    monsterInterval: setInterval(() => {
+      spawnMonster();
+      moveMonsters();
+    }, 1000),
+    trapInterval: setInterval(spawnTrap, 3000),
+    gamePaused: false
+  });
+  renderPlayer();
+}
+
+function clearIntervals() {
+  clearInterval(state.gameInterval);
+  clearInterval(state.monsterInterval);
+  clearInterval(state.trapInterval);
+}
+
+let pauseStartTime = null;
+
+function togglePause() {
+  state.gamePaused = !state.gamePaused;
+  if (state.gamePaused) {
+    pauseStartTime = new Date();
+  } else {
+    const pauseDuration = new Date() - pauseStartTime;
+    state.startTime = new Date(state.startTime.getTime() + pauseDuration);
+  }
+  updateElapsedTime();
+}
+
+function updateElapsedTime() {
+  const currentTime = state.gamePaused ? pauseStartTime : new Date();
+  const elapsedTime = Math.floor((currentTime - state.startTime) / 1000);
+  const minutes = Math.floor(elapsedTime / 60).toString().padStart(2, '0');
+  const seconds = (elapsedTime % 60).toString().padStart(2, '0');
+  document.getElementById('time').textContent = `Time: ${minutes}:${seconds}`;
+  document.getElementById('game-info').textContent = `Name: ${state.username} | Lives: ${state.lives}`;
+}
+
+function updateMonsterPositionTowardsPlayer(monster) {
+  if (Math.random() < 0.1) {
+    const randomAngle = Math.random() * 2 * Math.PI;
+    const normalizedDirectionX = Math.cos(randomAngle);
+    const normalizedDirectionY = Math.sin(randomAngle);
+
+    monster.x += normalizedDirectionX * 100;
+    monster.y += normalizedDirectionY * 100;
+  }
+}
+
+function moveMonsters() {
+  if (!state.gamePaused) {
+    state.monsters.forEach(monster => {
+      updateMonsterPositionTowardsPlayer(monster);
+    });
+    renderMonsters();
+  }
+}
+
+
+function renderMonsters() {
+  state.monsters.forEach(monster => {
+    const monsterElement = document.getElementById(`monster-${monster.id}`);
+    monsterElement.style.left = monster.x + 'px';
+    monsterElement.style.top = monster.y + 'px';
+  });
+}
+
+state.monsterInterval = setInterval(() => {
+  moveMonsters();
+}, 1000);
+
+
+function spawnMonster() {
+  if (state.monsters.length < 10 && !state.gamePaused) {
+    for (let i = 0; i < 10; i++) {
+      const monster = {
+        id: state.monsters.length + 1,
+        x: Math.random() * 780,
+        y: Math.random() * 380
+      };
+      state.monsters.push(monster);
+      renderMonster(monster);
+    }
+  }
+}
+
+function renderMonster(monster) {
+  const monsterElement = document.createElement('div');
+  monsterElement.className = 'monster';
+  monsterElement.id = `monster-${monster.id}`;
+  monsterElement.style.left = monster.x + 'px';
+  monsterElement.style.top = monster.y + 'px';
+  document.getElementById('game-screen').appendChild(monsterElement);
+}
+
+function spawnTrap() {
+  if (state.traps.length < 2 && !state.gamePaused) {
+    for (let i = 0; i < 2; i++) {
+      const trap = {
+        id: state.traps.length + 1,
+        x: Math.random() * 780,
+        y: Math.random() * 380
+      };
+      state.traps.push(trap);
+      renderTrap(trap);
+    }
+  }
+}
+
+function renderTrap(trap) {
+  const trapElement = document.createElement('div');
+  trapElement.className = 'trap';
+  trapElement.id = `trap-${trap.id}`;
+  trapElement.style.left = trap.x + 'px';
+  trapElement.style.top = trap.y + 'px';
+  document.getElementById('game-screen').appendChild(trapElement);
+}
+
+function renderGame() {
+  const gameScreen = document.createElement('div');
+  gameScreen.id = 'game-screen';
+  gameScreen.tabIndex = 0;
+  gameScreen.onkeydown = handleKeyPress;
+  app.appendChild(gameScreen);
+
+  const player = document.createElement('div');
+  player.className = 'player';
+  player.id = 'player';
+  player.style.left = state.playerPosition.x + 'px';
+  player.style.top = state.playerPosition.y + 'px';
+  gameScreen.appendChild(player);
+
+  const gameInfo = document.createElement('div');
+  gameInfo.id = 'game-info';
+  gameScreen.appendChild(gameInfo);
+
+  const time = document.createElement('div');
+  time.id = 'time';
+  gameScreen.appendChild(time);
+
+  updateElapsedTime();
+}
+
+function handleKeyPress(event) {
+  if (event.key === 'Escape') {
+    togglePause();
+  }
+  if (state.gamePaused) return;
+
+  const step = 10;
+  switch (event.key) {
+    case 'ArrowUp':
+      state.playerPosition.y = Math.max(state.playerPosition.y - step, 0);
+      break;
+    case 'ArrowDown':
+      state.playerPosition.y = Math.min(state.playerPosition.y + step, 380);
+      break;
+    case 'ArrowLeft':
+      state.playerPosition.x = Math.max(state.playerPosition.x - step, 0);
+      break;
+    case 'ArrowRight':
+      state.playerPosition.x = Math.min(state.playerPosition.x + step, 780);
+      break;
+  }
+  renderPlayer();
+  checkCollisions();
+}
+
+function renderPlayer() {
+  const player = document.getElementById('player');
+  player.style.left = state.playerPosition.x + 'px';
+  player.style.top = state.playerPosition.y + 'px';
+}
+
+function checkCollisions() {
+  state.monsters = state.monsters.filter(monster => {
+    const playerRect = document.getElementById('player').getBoundingClientRect();
+    const monsterRect = document.getElementById(`monster-${monster.id}`).getBoundingClientRect();
+    if (
+      playerRect.x < monsterRect.x + monsterRect.width &&
+      playerRect.x + playerRect.width > monsterRect.x &&
+      playerRect.y < monsterRect.y + monsterRect.height &&
+      playerRect.height + playerRect.y > monsterRect.y
+    ) {
+      state.lives--;
+      state.monstersEncountered++;
+      document.getElementById(`monster-${monster.id}`).remove();
+      return false;
+    }
+    return true;
+  });
+
+  state.traps = state.traps.filter(trap => {
+    const playerRect = document.getElementById('player').getBoundingClientRect();
+    const trapRect = document.getElementById(`trap-${trap.id}`).getBoundingClientRect();
+    if (
+      playerRect.x < trapRect.x + trapRect.width &&
+      playerRect.x + playerRect.width > trapRect.x &&
+      playerRect.y < trapRect.y + trapRect.height &&
+      playerRect.height + playerRect.y > trapRect.y
+    ) {
+      state.lives--;
+      state.trapsEncountered++;
+      document.getElementById(`trap-${trap.id}`).remove();
+      return false;
+    }
+    return true;
+  });
+
+  renderStats();
+
+  if (state.lives <= 0) {
+    endGame();
+  }
+}
+
+function renderStats() {
+  const gameInfo = document.getElementById('game-info');
+  gameInfo.textContent = `Name: ${state.username} | Lives: ${state.lives} | Monsters Encountered: ${state.monstersEncountered} | Traps Encountered: ${state.trapsEncountered}`;
+}
+
+function endGame() {
+  clearInterval(state.gameInterval);
+  clearInterval(state.monsterInterval);
+  clearInterval(state.trapInterval);
+  state.gamePaused = true;
+  updateState({ route: 'results' });
+}
+
+function renderResults() {
+  const results = document.createElement('div');
+  results.innerHTML = `
+    <h1>Game Over</h1>
+    <p>Time Played: <span id="time-played">${state.elapsedTime}</span></p>
+    <p>Monsters Encountered: <span id="monsters-encountered">${state.monstersEncountered}</span></p>
+    <p>Traps Encountered: <span id="traps-encountered">${state.trapsEncountered}</span></p>
+    <p>Lives Remaining: <span id="lives-remaining">${state.lives}</span></p>
+    <button id="play-again-button">Play Again</button>
+  `;
+  app.appendChild(results);
+
+  const playAgainButton = document.getElementById('play-again-button');
+  playAgainButton.addEventListener('click', () => updateState({ route: 'login' }));
+}
+
+render();
+
+</script>
+</body>
+</html>
